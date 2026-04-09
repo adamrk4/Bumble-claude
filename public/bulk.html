@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="he" dir="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bulk Message</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">← Back</a>
+  <div style="font-weight:600">Bulk Message</div>
+  <div style="width:60px"></div>
+</nav>
+
+<div class="page">
+  <div id="loading" class="state-msg">
+    <div class="spinner"></div>
+    Loading matches...
+  </div>
+
+  <div id="content" style="display:none">
+    <div class="card">
+      <h2>Compose Message</h2>
+      <div class="form-group">
+        <label>Message (use {name} to insert match's name)</label>
+        <textarea id="message-text" class="textarea" rows="4" placeholder="היי {name}! מה שלומך?"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Preview message for first selected match</label>
+        <div id="preview-text" style="font-size:14px;color:var(--muted);padding:8px;background:var(--dark);border-radius:8px;min-height:36px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">Select Matches</h2>
+        <button class="btn btn-secondary" onclick="toggleAll()">Select All</button>
+      </div>
+      <div id="matches-list"></div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <span id="selected-count" style="color:var(--muted);font-size:14px">0 selected</span>
+        <button class="btn btn-primary" id="send-btn" onclick="sendAll()" disabled>Send to All</button>
+      </div>
+      <div id="send-results"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+let matches = [];
+let selected = new Set();
+let allSelected = false;
+
+async function load() {
+  const res = await fetch('/api/matches');
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  if (!res.ok) return;
+  matches = await res.json();
+
+  const list = document.getElementById('matches-list');
+  matches.forEach(m => {
+    const avatarHtml = m.thumbnail
+      ? `<img src="${m.thumbnail}" class="match-avatar" alt="" style="width:38px;height:38px">`
+      : `<div class="match-avatar-placeholder" style="width:38px;height:38px;font-size:16px">👤</div>`;
+
+    const item = document.createElement('label');
+    item.className = 'check-item';
+    item.dataset.id = m.id;
+    item.dataset.matchId = m.matchId;
+    item.dataset.name = m.name;
+    item.innerHTML = `
+      <input type="checkbox" value="${m.id}" onchange="toggleSelect(this, '${m.id}', '${m.matchId}', '${escAttr(m.name)}')">
+      ${avatarHtml}
+      <div>
+        <div style="font-weight:600">${escHtml(m.name)}</div>
+        <div style="font-size:12px;color:var(--muted)">${m.age ? m.age + ' years' : ''}</div>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
+function toggleSelect(checkbox, userId, matchId, name) {
+  if (checkbox.checked) {
+    selected.add(JSON.stringify({ userId, matchId, name }));
+  } else {
+    // Remove matching entry
+    for (const entry of selected) {
+      if (JSON.parse(entry).userId === userId) { selected.delete(entry); break; }
+    }
+  }
+  updateUI();
+}
+
+function toggleAll() {
+  allSelected = !allSelected;
+  selected.clear();
+  document.querySelectorAll('#matches-list input[type=checkbox]').forEach((cb, i) => {
+    cb.checked = allSelected;
+    if (allSelected) {
+      const m = matches[i];
+      selected.add(JSON.stringify({ userId: m.id, matchId: m.matchId, name: m.name }));
+    }
+  });
+  updateUI();
+}
+
+function updateUI() {
+  document.getElementById('selected-count').textContent = `${selected.size} selected`;
+  document.getElementById('send-btn').disabled = selected.size === 0;
+  updatePreview();
+}
+
+function updatePreview() {
+  const msg = document.getElementById('message-text').value;
+  const first = [...selected][0];
+  if (!first) { document.getElementById('preview-text').textContent = ''; return; }
+  const { name } = JSON.parse(first);
+  document.getElementById('preview-text').textContent = msg.replace(/{name}/g, name);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('message-text').addEventListener('input', updatePreview);
+});
+
+async function sendAll() {
+  const text = document.getElementById('message-text').value.trim();
+  if (!text) { alert('Please write a message.'); return; }
+  if (selected.size === 0) { alert('Select at least one match.'); return; }
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const targets = [...selected].map(s => {
+    const { userId, matchId, name } = JSON.parse(s);
+    return { userId, matchId, name, message: text.replace(/{name}/g, name) };
+  });
+
+  const res = await fetch('/api/bulk-send', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ targets }),
+  });
+
+  const data = await res.json();
+  const resultsEl = document.getElementById('send-results');
+  resultsEl.innerHTML = '';
+
+  if (data.results) {
+    const ok = data.results.filter(r => r.ok).length;
+    const fail = data.results.filter(r => !r.ok).length;
+    resultsEl.innerHTML = `
+      <div class="alert ${fail === 0 ? 'alert-success' : 'alert-warning'}">
+        Sent: ${ok} ✓  Failed: ${fail} ✗
+      </div>
+      ${data.results.filter(r => !r.ok).map(r =>
+        `<div style="font-size:13px;color:var(--danger)">${escHtml(r.name)}: ${escHtml(r.error)}</div>`
+      ).join('')}
+    `;
+  }
+
+  btn.textContent = 'Send to All';
+  btn.disabled = selected.size === 0;
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function escAttr(s) {
+  return String(s || '').replace(/'/g, "\\'");
+}
+
+load();
+</script>
+</body>
+</html>

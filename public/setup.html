@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">🐝 Bumble AI</a>
+  <div style="font-weight:600">Setup</div>
+  <div style="width:60px"></div>
+</nav>
+
+<div class="page">
+  <div id="already-set" class="alert alert-success" style="display:none">
+    ✓ Token is already configured. You can update it below.
+  </div>
+
+  <div class="card">
+    <h2>How to Get Your Bumble Token</h2>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      We need your Bumble auth token to read your matches and send messages on your behalf.
+      Use the free <strong>Proxyman</strong> iOS app to capture it — this takes about 2 minutes.
+    </p>
+
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>Install Proxyman on your iPhone</h3>
+        <p>Search "Proxyman" in the App Store and install it (it's free).</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Install the Proxyman certificate</h3>
+        <p>Open Proxyman → tap "Certificate" → follow the steps to install and trust the certificate in Settings → General → VPN & Device Management.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>Start capturing traffic</h3>
+        <p>In Proxyman, tap the record button. Then switch to Bumble and do anything (open a chat, swipe, etc.).</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>Find the Authorization header</h3>
+        <ul>
+          <li>In Proxyman, find a request to <code>am1.bumble.com</code></li>
+          <li>Tap on it → "Request" tab → Headers</li>
+          <li>Find the <code>Authorization</code> header (starts with <code>Bearer </code>)</li>
+          <li>Copy everything <strong>after</strong> "Bearer " — that's your token</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">5</div>
+      <div class="step-body">
+        <h3>Also copy the device ID (optional but recommended)</h3>
+        <p>In the same request headers, look for <code>x-pinguid</code> or <code>x-device-id</code> and copy its value.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Enter Your Token</h2>
+    <div class="form-group">
+      <label>Bearer Token (from Authorization header, without "Bearer ")</label>
+      <textarea id="token-input" class="textarea" rows="4" placeholder="Paste your token here..."></textarea>
+    </div>
+    <div class="form-group">
+      <label>Device ID (optional — from x-pinguid header)</label>
+      <input type="text" id="device-id-input" class="input" placeholder="e.g. abc123-def456-...">
+    </div>
+    <button class="btn btn-primary btn-full" onclick="saveToken()">Save Token</button>
+    <div id="token-result" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Token Expiry</h2>
+    <p style="font-size:14px;color:var(--muted)">
+      Bumble tokens typically expire after a few days or when you log out of the app.
+      If you see "Token expired" errors, just repeat this process to get a fresh token.
+    </p>
+  </div>
+</div>
+
+<script>
+async function load() {
+  const res = await fetch('/api/session');
+  const sess = await res.json();
+  if (sess.configured) {
+    document.getElementById('already-set').style.display = 'block';
+  }
+}
+
+async function saveToken() {
+  const token = document.getElementById('token-input').value.trim().replace(/^Bearer\s+/i, '');
+  const deviceId = document.getElementById('device-id-input').value.trim();
+
+  if (!token) {
+    document.getElementById('token-result').innerHTML =
+      `<div class="alert alert-error">Please paste your token.</div>`;
+    return;
+  }
+
+  const res = await fetch('/api/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, device_id: deviceId }),
+  });
+
+  const resultEl = document.getElementById('token-result');
+  if (res.ok) {
+    resultEl.innerHTML = `<div class="alert alert-success">Token saved! <a href="/" style="color:var(--yellow)">Go to matches →</a></div>`;
+  } else {
+    resultEl.innerHTML = `<div class="alert alert-error">Failed to save token.</div>`;
+  }
+}
+
+load();
+</script>
+</body>
+</html>

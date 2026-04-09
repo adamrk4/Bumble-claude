@@ -1,0 +1,15 @@
+{
+  "name": "bumble-ai-assistant",
+  "version": "1.0.0",
+  "description": "AI-powered Bumble chat assistant with Hebrew support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
+    "axios": "^1.7.0",
+    "express": "^4.19.0"
+  }
+}

@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="he" dir="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">← Back</a>
+  <div style="font-weight:600">My Profile</div>
+  <div style="width:60px"></div>
+</nav>
+
+<div class="page">
+  <div class="alert alert-warning">
+    The AI uses your profile to write suggestions that sound like <strong>you</strong>. Fill this in carefully.
+  </div>
+
+  <form id="persona-form">
+    <div class="card">
+      <h2>Basic Info</h2>
+      <div class="form-group">
+        <label>Your Name</label>
+        <input type="text" id="name" class="input" placeholder="e.g. Adam">
+      </div>
+      <div class="form-group">
+        <label>Age</label>
+        <input type="number" id="age" class="input" placeholder="e.g. 26">
+      </div>
+      <div class="form-group">
+        <label>City</label>
+        <input type="text" id="city" class="input" placeholder="e.g. Tel Aviv">
+      </div>
+      <div class="form-group">
+        <label>Job / What you do</label>
+        <input type="text" id="job" class="input" placeholder="e.g. Software engineer">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Personality & Style</h2>
+      <div class="form-group">
+        <label>Personality Traits</label>
+        <input type="text" id="traits" class="input" placeholder="e.g. funny, sarcastic, laid-back">
+      </div>
+      <div class="form-group">
+        <label>Your Interests & Hobbies</label>
+        <textarea id="interests" class="textarea" rows="2" placeholder="e.g. hiking, music, basketball, cooking"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Communication Style</label>
+        <input type="text" id="communicationStyle" class="input" placeholder="e.g. casual, uses humor, direct, short messages">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Goals</h2>
+      <div class="form-group">
+        <label>Looking For</label>
+        <input type="text" id="lookingFor" class="input" placeholder="e.g. casual dating, serious relationship, new friends">
+      </div>
+      <div class="form-group">
+        <label>Default Language</label>
+        <select id="languagePreference" class="input">
+          <option value="Hebrew">Hebrew (עברית)</option>
+          <option value="English">English</option>
+          <option value="auto">Auto-detect from chat</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Example Message Style</h2>
+      <div class="form-group">
+        <label>Write an example of how you typically start a conversation or reply</label>
+        <textarea id="exampleStyle" class="textarea" rows="3" placeholder="e.g. 'היי! ראיתי שאת גם אוהבת טיולים, לאן הלכת לאחרונה?'"></textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary btn-full">Save Profile</button>
+    <div id="save-result" style="margin-top:12px"></div>
+  </form>
+
+  <div class="card" style="margin-top:16px">
+    <h2>Token Settings</h2>
+    <p style="font-size:14px;color:var(--muted);margin-bottom:12px">Need to update your Bumble auth token?</p>
+    <a href="/setup" class="btn btn-secondary btn-full">Update Token</a>
+  </div>
+</div>
+
+<script>
+const fields = ['name','age','city','job','traits','interests','communicationStyle','lookingFor','languagePreference','exampleStyle'];
+
+async function load() {
+  const res = await fetch('/api/persona');
+  if (!res.ok) return;
+  const persona = await res.json();
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    if (el && persona[f] != null) el.value = persona[f];
+  });
+}
+
+document.getElementById('persona-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const data = {};
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) data[f] = el.value;
+  });
+
+  const res = await fetch('/api/persona', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+
+  const resultEl = document.getElementById('save-result');
+  if (res.ok) {
+    resultEl.innerHTML = `<div class="alert alert-success">Profile saved! AI will now use your style.</div>`;
+    setTimeout(() => resultEl.innerHTML = '', 3000);
+  } else {
+    resultEl.innerHTML = `<div class="alert alert-error">Failed to save.</div>`;
+  }
+});
+
+load();
+</script>
+</body>
+</html>

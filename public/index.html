@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="he" dir="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bumble AI</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">🐝 Bumble AI</a>
+  <div class="nav-links">
+    <a href="/bulk">Bulk</a>
+    <a href="/settings">Settings</a>
+  </div>
+</nav>
+
+<div class="page">
+  <div id="loading" class="state-msg">
+    <div class="spinner"></div>
+    Loading matches...
+  </div>
+  <div id="no-token" class="state-msg" style="display:none">
+    <p style="font-size:40px;margin-bottom:12px">🔑</p>
+    <p style="margin-bottom:16px;color:var(--text)">You need to set up your Bumble token first.</p>
+    <a href="/setup" class="btn btn-primary">Set Up Token</a>
+  </div>
+  <div id="empty" class="state-msg" style="display:none">
+    No matches yet.
+  </div>
+  <div id="matches-list"></div>
+</div>
+
+<script>
+async function load() {
+  // Check token
+  const sess = await fetch('/api/session').then(r => r.json());
+  if (!sess.configured) {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('no-token').style.display = 'block';
+    return;
+  }
+
+  const res = await fetch('/api/matches');
+  if (!res.ok) {
+    const err = await res.json();
+    document.getElementById('loading').style.display = 'none';
+    if (err.error === 'TOKEN_EXPIRED' || err.error === 'NO_TOKEN') {
+      document.getElementById('no-token').style.display = 'block';
+    } else {
+      document.getElementById('empty').textContent = 'Error loading matches: ' + err.message;
+      document.getElementById('empty').style.display = 'block';
+    }
+    return;
+  }
+
+  const matches = await res.json();
+  document.getElementById('loading').style.display = 'none';
+
+  if (!matches.length) {
+    document.getElementById('empty').style.display = 'block';
+    return;
+  }
+
+  const list = document.getElementById('matches-list');
+  matches.forEach(m => {
+    const avatarHtml = m.thumbnail
+      ? `<img src="${m.thumbnail}" class="match-avatar" alt="">`
+      : `<div class="match-avatar-placeholder">👤</div>`;
+
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <a href="/chat?id=${m.id}&matchId=${m.matchId}" class="match-item">
+        ${avatarHtml}
+        <div class="match-info">
+          <div class="match-name">${m.name}${m.isUnread ? ' <span class="badge">New</span>' : ''}</div>
+          <div class="match-preview">${m.lastMessage || 'No messages yet'}</div>
+        </div>
+      </a>
+    `;
+    list.appendChild(card);
+  });
+}
+
+load();
+</script>
+</body>
+</html>

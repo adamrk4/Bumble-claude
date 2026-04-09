@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="he" dir="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+  <a href="/" class="logo">← Back</a>
+  <div id="match-name-nav" style="font-weight:600"></div>
+  <div style="width:60px"></div>
+</nav>
+
+<div class="page">
+  <div id="loading" class="state-msg">
+    <div class="spinner"></div>
+    Loading conversation...
+  </div>
+
+  <div id="content" style="display:none">
+    <!-- Profile card -->
+    <div class="card" id="profile-card">
+      <div class="profile-header">
+        <div id="profile-photo-wrap"></div>
+        <div class="profile-meta">
+          <div class="profile-name" id="profile-name"></div>
+          <div class="profile-details" id="profile-details"></div>
+          <div class="tags" id="profile-tags"></div>
+        </div>
+      </div>
+      <div id="profile-bio" style="font-size:14px;color:var(--muted);margin-top:6px"></div>
+    </div>
+
+    <!-- Recent messages -->
+    <div class="card">
+      <h2>Recent Messages</h2>
+      <div class="messages-preview" id="messages-preview"></div>
+    </div>
+
+    <!-- AI Suggestions -->
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">AI Suggestions</h2>
+        <button class="btn btn-secondary" id="refresh-btn" onclick="loadSuggestions()">↺ Refresh</button>
+      </div>
+      <div id="suggestions-loading" class="state-msg" style="display:none;padding:20px">
+        <div class="spinner"></div>
+        Generating suggestions...
+      </div>
+      <div id="no-suggestions" style="display:none;color:var(--muted);font-size:14px;text-align:center;padding:12px">
+        You sent the last message — waiting for a reply.
+      </div>
+      <div id="suggestions-list"></div>
+    </div>
+
+    <!-- Custom compose -->
+    <div class="card">
+      <h2>Send Message</h2>
+      <div class="form-group">
+        <textarea id="compose-text" class="textarea" rows="3" placeholder="Write a message..."></textarea>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="sendMessage()">Send</button>
+      <div id="send-result" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const userId = params.get('id');
+const matchId = params.get('matchId');
+let myUserId = null;
+
+async function load() {
+  if (!userId || !matchId) {
+    document.getElementById('loading').textContent = 'Missing match info.';
+    return;
+  }
+
+  // Load session to get my user ID
+  const sessRes = await fetch('/api/session');
+  const sess = await sessRes.json();
+
+  const [profileRes, messagesRes] = await Promise.all([
+    fetch(`/api/match/${userId}/profile`),
+    fetch(`/api/match/${matchId}/messages`),
+  ]);
+
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('content').style.display = 'block';
+
+  if (profileRes.ok) {
+    const profile = await profileRes.json();
+    renderProfile(profile);
+  }
+
+  if (messagesRes.ok) {
+    const messages = await messagesRes.json();
+    renderMessages(messages);
+  }
+
+  loadSuggestions();
+}
+
+function renderProfile(p) {
+  document.getElementById('match-name-nav').textContent = p.name;
+  document.getElementById('profile-name').textContent = `${p.name}, ${p.age}`;
+
+  const details = [p.job, p.school, p.distance].filter(Boolean).join(' · ');
+  document.getElementById('profile-details').textContent = details;
+
+  const bio = document.getElementById('profile-bio');
+  if (p.bio) bio.textContent = p.bio;
+
+  const tags = document.getElementById('profile-tags');
+  (p.interests || []).forEach(i => {
+    const t = document.createElement('span');
+    t.className = 'tag';
+    t.textContent = i;
+    tags.appendChild(t);
+  });
+
+  const photoWrap = document.getElementById('profile-photo-wrap');
+  if (p.photos && p.photos[0]) {
+    photoWrap.innerHTML = `<img src="${p.photos[0].url}" class="profile-photo" alt="">`;
+  } else {
+    photoWrap.innerHTML = `<div class="profile-photo-placeholder">👤</div>`;
+  }
+}
+
+function renderMessages(messages) {
+  const container = document.getElementById('messages-preview');
+  container.innerHTML = '';
+  const lastFew = messages.slice(-10);
+  lastFew.forEach(m => {
+    const isMe = false; // will rely on visual styling — server doesn't return myUserId here
+    const div = document.createElement('div');
+    div.className = `msg ${m.senderId ? 'them' : 'me'}`;
+    div.innerHTML = `<div class="msg-bubble">${escHtml(m.text)}</div>`;
+    container.appendChild(div);
+  });
+  container.scrollTop = container.scrollHeight;
+}
+
+async function loadSuggestions() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  document.getElementById('suggestions-list').innerHTML = '';
+  document.getElementById('no-suggestions').style.display = 'none';
+  document.getElementById('suggestions-loading').style.display = 'block';
+
+  try {
+    const res = await fetch(`/api/match/${userId}/suggest`, { method: 'POST' });
+    const data = await res.json();
+    document.getElementById('suggestions-loading').style.display = 'none';
+
+    if (!data.suggestions || data.suggestions.length === 0) {
+      document.getElementById('no-suggestions').style.display = 'block';
+    } else {
+      renderSuggestions(data.suggestions);
+    }
+  } catch (err) {
+    document.getElementById('suggestions-loading').style.display = 'none';
+    document.getElementById('suggestions-list').innerHTML =
+      `<div class="alert alert-error">Failed to generate suggestions.</div>`;
+  }
+
+  btn.disabled = false;
+}
+
+function renderSuggestions(suggestions) {
+  const list = document.getElementById('suggestions-list');
+  list.innerHTML = '';
+  suggestions.forEach((s, i) => {
+    const card = document.createElement('div');
+    card.className = 'suggestion-card';
+    card.innerHTML = `
+      <div style="flex:1">
+        <div class="suggestion-text">${escHtml(s.suggestion)}</div>
+        <div class="suggestion-tone">${s.tone}</div>
+      </div>
+      <button class="suggestion-use-btn" title="Use this suggestion" onclick="useSuggestion(${JSON.stringify(s.suggestion)})">→</button>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function useSuggestion(text) {
+  document.getElementById('compose-text').value = text;
+  document.getElementById('compose-text').focus();
+  document.querySelector('.card:last-child').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function sendMessage() {
+  const text = document.getElementById('compose-text').value.trim();
+  if (!text) return;
+
+  const resultEl = document.getElementById('send-result');
+  resultEl.innerHTML = '';
+
+  const res = await fetch(`/api/match/${userId}/send`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, matchId }),
+  });
+
+  if (res.ok) {
+    document.getElementById('compose-text').value = '';
+    resultEl.innerHTML = `<div class="alert alert-success">Message sent!</div>`;
+    setTimeout(() => resultEl.innerHTML = '', 3000);
+  } else {
+    const err = await res.json();
+    resultEl.innerHTML = `<div class="alert alert-error">${err.message}</div>`;
+  }
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+load();
+</script>
+</body>
+</html>
