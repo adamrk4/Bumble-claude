@@ -1,6 +1,6 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 function formatChatHistory(messages, myUserId) {
   return messages
@@ -12,7 +12,9 @@ function formatChatHistory(messages, myUserId) {
     .join('\n');
 }
 
-function buildSystemPrompt(persona) {
+function buildPrompt(persona, matchProfile, chatHistory, lastMessage, count) {
+  const interestsList = (matchProfile.interests || []).join(', ') || 'not specified';
+
   return `You are helping ${persona.name || 'the user'} write replies on the Bumble dating app.
 
 Write in their voice and style. Detect the language used in the conversation and reply in that same language. Default to Hebrew (עברית) if unclear.
@@ -27,13 +29,7 @@ User profile:
 - Looking for: ${persona.lookingFor || ''}
 - Communication style: ${persona.communicationStyle || 'natural and friendly'}
 
-Always keep replies short, authentic, and conversational — like real chat messages, not essays.`;
-}
-
-function buildUserPrompt(matchProfile, chatHistory, lastMessage, count) {
-  const interestsList = (matchProfile.interests || []).join(', ') || 'not specified';
-
-  return `Match profile:
+Match profile:
 - Name: ${matchProfile.name}, Age: ${matchProfile.age}
 - Bio: ${matchProfile.bio || 'no bio'}
 - Interests: ${interestsList}
@@ -46,7 +42,7 @@ ${chatHistory}
 
 Last message from ${matchProfile.name}: "${lastMessage}"
 
-Generate ${count} different reply suggestions. Make each one distinct in tone (e.g., funny, curious, flirty, direct). Detect the language from the conversation and use it.
+Generate ${count} different reply suggestions. Make each one distinct in tone (e.g., funny, curious, flirty, direct). Keep replies short and conversational — like real chat messages, not essays.
 
 Respond ONLY with a JSON array, no extra text:
 [
@@ -73,21 +69,17 @@ async function generateSuggestions(persona, matchProfile, messages, myUserId) {
   // Fewer suggestions for short conversations
   const count = messages.length <= 2 ? 2 : Math.min(4, messages.length);
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: buildSystemPrompt(persona),
-    messages: [
-      { role: 'user', content: buildUserPrompt(matchProfile, chatHistory, lastMessage, count) },
-    ],
-  });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const result = await model.generateContent(
+    buildPrompt(persona, matchProfile, chatHistory, lastMessage, count)
+  );
 
-  const raw = response.content[0].text.trim();
+  const raw = result.response.text().trim();
 
   // Extract JSON array from response
   const match = raw.match(/\[[\s\S]*\]/);
   if (!match) {
-    throw new Error('Claude returned invalid format');
+    throw new Error('Gemini returned invalid format');
   }
 
   const suggestions = JSON.parse(match[0]);
