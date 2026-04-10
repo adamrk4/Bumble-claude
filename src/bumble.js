@@ -3,7 +3,13 @@ const fs = require('fs');
 const path = require('path');
 
 const SESSION_FILE = path.join(__dirname, '../data/session.json');
-const BASE_URL = 'https://am1.bumble.com/mwebapi.phtml';
+
+// Bumble uses regional API endpoints. EU/Israel uses bmaeu, Americas uses am1.
+// We try bmaeu first (EU), fall back to am1 if needed.
+const ENDPOINTS = [
+  'https://bmaeu.bumble.com/mwebapi.phtml',
+  'https://am1.bumble.com/mwebapi.phtml',
+];
 
 function loadSession() {
   try {
@@ -18,9 +24,11 @@ function getHeaders(session) {
   return {
     'Authorization': `Bearer ${session.token}`,
     'X-Pinguid': session.device_id || '',
-    'Content-Type': 'application/json',
-    'User-Agent': 'Bumble/5.0 iPhone',
+    'X-App-Version': '6.0.0',
+    'Content-Type': 'application/json; charset=UTF-8',
+    'User-Agent': 'Bumble/60000 CFNetwork/1498.700.2 Darwin/23.6.0',
     'Accept': 'application/json',
+    'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8',
   };
 }
 
@@ -41,21 +49,26 @@ async function apiCall(action, params = {}) {
     throw err;
   }
 
-  try {
-    const response = await axios.post(
-      `${BASE_URL}?${action}`,
-      buildBody(action, params),
-      { headers: getHeaders(session), timeout: 15000 }
-    );
-    return response.data;
-  } catch (err) {
-    if (err.response && err.response.status === 401) {
-      const authErr = new Error('TOKEN_EXPIRED');
-      authErr.code = 'TOKEN_EXPIRED';
-      throw authErr;
+  // Try each endpoint until one works
+  let lastErr;
+  for (const base of ENDPOINTS) {
+    try {
+      const response = await axios.post(
+        `${base}?${action}`,
+        buildBody(action, params),
+        { headers: getHeaders(session), timeout: 15000 }
+      );
+      return response.data;
+    } catch (err) {
+      if (err.response && err.response.status === 401) {
+        const authErr = new Error('TOKEN_EXPIRED');
+        authErr.code = 'TOKEN_EXPIRED';
+        throw authErr;
+      }
+      lastErr = err;
     }
-    throw err;
   }
+  throw lastErr;
 }
 
 // Fetch list of matches/conversations

@@ -22,17 +22,25 @@
   </div>
   <div id="no-token" class="state-msg" style="display:none">
     <p style="font-size:40px;margin-bottom:12px">🔑</p>
-    <p style="margin-bottom:16px;color:var(--text)">You need to set up your Bumble token first.</p>
+    <p style="margin-bottom:16px;color:var(--text)">Set up your Bumble token to get started.</p>
     <a href="/setup" class="btn btn-primary">Set Up Token</a>
   </div>
   <div id="empty" class="state-msg" style="display:none">
     No matches yet.
   </div>
   <div id="matches-list"></div>
+  <div id="last-updated" style="text-align:center;font-size:12px;color:var(--muted);padding:8px"></div>
 </div>
 
 <script>
-async function load() {
+let polling = null;
+
+async function load(silent = false) {
+  if (!silent) {
+    document.getElementById('loading').style.display = 'block';
+    document.getElementById('matches-list').innerHTML = '';
+  }
+
   // Check token
   const sess = await fetch('/api/session').then(r => r.json());
   if (!sess.configured) {
@@ -42,20 +50,20 @@ async function load() {
   }
 
   const res = await fetch('/api/matches');
+  document.getElementById('loading').style.display = 'none';
+
   if (!res.ok) {
     const err = await res.json();
-    document.getElementById('loading').style.display = 'none';
     if (err.error === 'TOKEN_EXPIRED' || err.error === 'NO_TOKEN') {
       document.getElementById('no-token').style.display = 'block';
     } else {
-      document.getElementById('empty').textContent = 'Error loading matches: ' + err.message;
+      document.getElementById('empty').textContent = 'Error: ' + err.message;
       document.getElementById('empty').style.display = 'block';
     }
     return;
   }
 
   const matches = await res.json();
-  document.getElementById('loading').style.display = 'none';
 
   if (!matches.length) {
     document.getElementById('empty').style.display = 'block';
@@ -63,9 +71,11 @@ async function load() {
   }
 
   const list = document.getElementById('matches-list');
+  list.innerHTML = '';
+
   matches.forEach(m => {
     const avatarHtml = m.thumbnail
-      ? `<img src="${m.thumbnail}" class="match-avatar" alt="">`
+      ? `<img src="${m.thumbnail}" class="match-avatar" alt="" onerror="this.style.display='none'">`
       : `<div class="match-avatar-placeholder">👤</div>`;
 
     const card = document.createElement('div');
@@ -74,13 +84,26 @@ async function load() {
       <a href="/chat?id=${m.id}&matchId=${m.matchId}" class="match-item">
         ${avatarHtml}
         <div class="match-info">
-          <div class="match-name">${m.name}${m.isUnread ? ' <span class="badge">New</span>' : ''}</div>
-          <div class="match-preview">${m.lastMessage || 'No messages yet'}</div>
+          <div class="match-name">${escHtml(m.name)}${m.isUnread ? ' <span class="badge">New</span>' : ''}</div>
+          <div class="match-preview">${escHtml(m.lastMessage || 'No messages yet')}</div>
         </div>
+        <div style="color:var(--yellow);font-size:18px">›</div>
       </a>
     `;
     list.appendChild(card);
   });
+
+  const now = new Date().toLocaleTimeString('he-IL');
+  document.getElementById('last-updated').textContent = `Updated at ${now} · auto-refreshes every 15s`;
+
+  // Start polling if not already running
+  if (!polling) {
+    polling = setInterval(() => load(true), 15000);
+  }
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 load();

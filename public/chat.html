@@ -72,16 +72,14 @@ const params = new URLSearchParams(location.search);
 const userId = params.get('id');
 const matchId = params.get('matchId');
 let myUserId = null;
+let messagePoller = null;
+let lastMessageCount = 0;
 
 async function load() {
   if (!userId || !matchId) {
     document.getElementById('loading').textContent = 'Missing match info.';
     return;
   }
-
-  // Load session to get my user ID
-  const sessRes = await fetch('/api/session');
-  const sess = await sessRes.json();
 
   const [profileRes, messagesRes] = await Promise.all([
     fetch(`/api/match/${userId}/profile`),
@@ -99,9 +97,25 @@ async function load() {
   if (messagesRes.ok) {
     const messages = await messagesRes.json();
     renderMessages(messages);
+    lastMessageCount = messages.length;
   }
 
   loadSuggestions();
+
+  // Auto-refresh messages every 10 seconds
+  messagePoller = setInterval(pollMessages, 10000);
+}
+
+async function pollMessages() {
+  const res = await fetch(`/api/match/${matchId}/messages`);
+  if (!res.ok) return;
+  const messages = await res.json();
+  if (messages.length !== lastMessageCount) {
+    lastMessageCount = messages.length;
+    renderMessages(messages);
+    // Auto-regenerate suggestions if new message arrived
+    loadSuggestions();
+  }
 }
 
 function renderProfile(p) {

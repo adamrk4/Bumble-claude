@@ -119,6 +119,17 @@ app.post('/api/match/:id/send', async (req, res) => {
   }
 });
 
+// --- Real-time Poll (returns matches + any new messages since timestamp) ---
+
+app.get('/api/poll', async (req, res) => {
+  try {
+    const matches = await bumble.getMatches();
+    res.json({ matches, ts: Date.now() });
+  } catch (err) {
+    handleBumbleError(err, res);
+  }
+});
+
 // --- Bulk Send ---
 
 app.post('/api/bulk-send', async (req, res) => {
